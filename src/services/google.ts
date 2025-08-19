@@ -92,6 +92,7 @@ export async function listEvents(
     orderBy?: "startTime" | "updated";
     pageToken?: string;
     calendarId?: string;
+    timezone?: string;
   } & Record<string, any>
 ): Promise<calendar_v3.Schema$Events> {
   const startTime = Date.now();
@@ -130,7 +131,7 @@ export async function listEvents(
       orderBy: params.orderBy ?? "startTime",
       pageToken: params.pageToken,
       // Add timezone to ensure proper date handling
-      timeZone: "UTC",
+      timeZone: params.timezone || "UTC",
       // Add showDeleted: false to exclude deleted events
       showDeleted: false,
       // Add alwaysIncludeEmail: true to get attendee information

@@ -288,6 +288,7 @@ calendarRouter.get(
       orderBy,
       pageToken,
       calendarIds,
+      timezone,
     } = req.query as Record<string, string>;
 
     try {
@@ -419,6 +420,7 @@ calendarRouter.get(
             orderBy: orderBy === "updated" ? "updated" : "startTime",
             pageToken,
             calendarId: calendarId, // Pass specific calendar ID
+            timezone: timezone || undefined, // Pass timezone if provided
           });
 
           // Add calendarId to each event
