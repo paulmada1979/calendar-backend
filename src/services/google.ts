@@ -430,36 +430,36 @@ export async function updateEvent(
     }
 
     // Validate that start is before end
-    let startTime: Date, endTime: Date;
+    let eventStartTime: Date, eventEndTime: Date;
 
     if (mergedEventData.start.date) {
       // All-day event
-      startTime = new Date(mergedEventData.start.date);
-      endTime = new Date(
+      eventStartTime = new Date(mergedEventData.start.date);
+      eventEndTime = new Date(
         mergedEventData.end.date || mergedEventData.end.dateTime!
       );
     } else {
       // Time-based event
-      startTime = new Date(mergedEventData.start.dateTime!);
-      endTime = new Date(mergedEventData.end.dateTime!);
+      eventStartTime = new Date(mergedEventData.start.dateTime!);
+      eventEndTime = new Date(mergedEventData.end.dateTime!);
     }
 
-    if (startTime >= endTime) {
+    if (eventStartTime >= eventEndTime) {
       console.log(
-        `[GOOGLE-SERVICE] ${new Date().toISOString()} - Invalid time range detected, start: ${startTime.toISOString()}, end: ${endTime.toISOString()}`
+        `[GOOGLE-SERVICE] ${new Date().toISOString()} - Invalid time range detected, start: ${eventStartTime.toISOString()}, end: ${eventEndTime.toISOString()}`
       );
 
       // Fix invalid time range by ensuring end is after start
       if (mergedEventData.start.date) {
         // All-day event: ensure end date is at least 1 day after start
-        const newEndDate = new Date(startTime);
+        const newEndDate = new Date(eventStartTime);
         newEndDate.setDate(newEndDate.getDate() + 1);
         mergedEventData.end = {
           date: newEndDate.toISOString().split("T")[0],
         };
       } else {
         // Time-based event: ensure end time is at least 1 hour after start
-        const newEndTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+        const newEndTime = new Date(eventStartTime.getTime() + 60 * 60 * 1000);
         mergedEventData.end = {
           dateTime: newEndTime.toISOString(),
           timeZone: mergedEventData.start.timeZone || "UTC",
