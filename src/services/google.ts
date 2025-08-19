@@ -296,20 +296,240 @@ export async function updateEvent(
     colorId: string;
     transparency: "opaque" | "transparent";
     visibility: "default" | "public" | "private" | "confidential";
+    calendarId?: string;
   }>
 ): Promise<calendar_v3.Schema$Event> {
   const startTime = Date.now();
   console.log(
     `[GOOGLE-SERVICE] ${new Date().toISOString()} - Updating event in Google Calendar - Event ID: ${eventId}`
   );
+  console.log(
+    `[GOOGLE-SERVICE] ${new Date().toISOString()} - Update data received: ${JSON.stringify(
+      eventData
+    )}`
+  );
 
   try {
     const calendar = getCalendarClient(tokens);
 
-    const response = await calendar.events.update({
-      calendarId: "primary",
+    // First, get the existing event to merge with updates
+    const calendarId = eventData.calendarId || "primary";
+    const existingEvent = await calendar.events.get({
+      calendarId: calendarId,
       eventId: eventId,
-      requestBody: eventData,
+    });
+
+    console.log(
+      `[GOOGLE-SERVICE] ${new Date().toISOString()} - Existing event data: ${JSON.stringify(
+        {
+          start: existingEvent.data.start,
+          end: existingEvent.data.end,
+          allDay: existingEvent.data.start?.date ? true : false,
+        }
+      )}`
+    );
+
+    // Merge existing event with updates
+    const mergedEventData = {
+      ...existingEvent.data,
+      ...eventData,
+    };
+
+    // Ensure we have both start and end times for non-all-day events
+    if (
+      mergedEventData.start &&
+      !mergedEventData.end &&
+      !mergedEventData.start.date
+    ) {
+      // If we only have start time and it's not an all-day event, calculate end time
+      if (existingEvent.data.start && existingEvent.data.end) {
+        const originalStart = new Date(
+          existingEvent.data.start.dateTime || existingEvent.data.start.date!
+        );
+        const originalEnd = new Date(
+          existingEvent.data.end.dateTime || existingEvent.data.end.date!
+        );
+        const duration = originalEnd.getTime() - originalStart.getTime();
+
+        const newStart = new Date(mergedEventData.start.dateTime!);
+        const newEnd = new Date(newStart.getTime() + duration);
+
+        mergedEventData.end = {
+          dateTime: newEnd.toISOString(),
+          timeZone:
+            mergedEventData.start.timeZone ||
+            existingEvent.data.start?.timeZone ||
+            "UTC",
+        };
+
+        console.log(
+          `[GOOGLE-SERVICE] ${new Date().toISOString()} - Calculated end time: ${JSON.stringify(
+            mergedEventData.end
+          )}`
+        );
+      } else {
+        // If no existing end time, create a default 1-hour duration
+        const newStart = new Date(mergedEventData.start.dateTime!);
+        const newEnd = new Date(newStart.getTime() + 60 * 60 * 1000); // 1 hour later
+
+        mergedEventData.end = {
+          dateTime: newEnd.toISOString(),
+          timeZone:
+            mergedEventData.start.timeZone ||
+            existingEvent.data.start?.timeZone ||
+            "UTC",
+        };
+
+        console.log(
+          `[GOOGLE-SERVICE] ${new Date().toISOString()} - Created default end time (1 hour): ${JSON.stringify(
+            mergedEventData.end
+          )}`
+        );
+      }
+    } else if (mergedEventData.start?.date && !mergedEventData.end?.date) {
+      // Handle all-day events - ensure they have both start and end dates
+      if (existingEvent.data.start?.date && existingEvent.data.end?.date) {
+        const originalStart = new Date(existingEvent.data.start.date);
+        const originalEnd = new Date(existingEvent.data.end.date);
+        const duration = originalEnd.getTime() - originalStart.getTime();
+
+        const newStart = new Date(mergedEventData.start.date);
+        const newEnd = new Date(newStart.getTime() + duration);
+
+        mergedEventData.end = {
+          date: newEnd.toISOString().split("T")[0], // Just the date part
+        };
+
+        console.log(
+          `[GOOGLE-SERVICE] ${new Date().toISOString()} - Calculated all-day end date: ${JSON.stringify(
+            mergedEventData.end
+          )}`
+        );
+      } else {
+        // Default to 1 day duration for all-day events
+        const newStart = new Date(mergedEventData.start.date);
+        const newEnd = new Date(newStart.getTime() + 24 * 60 * 60 * 1000); // 1 day later
+
+        mergedEventData.end = {
+          date: newEnd.toISOString().split("T")[0], // Just the date part
+        };
+
+        console.log(
+          `[GOOGLE-SERVICE] ${new Date().toISOString()} - Created default all-day end date: ${JSON.stringify(
+            mergedEventData.end
+          )}`
+        );
+      }
+    }
+
+    // CRITICAL: Ensure we always have both start and end times
+    if (!mergedEventData.start || !mergedEventData.end) {
+      throw new Error(
+        "Both start and end times are required for event updates"
+      );
+    }
+
+    // Validate that start is before end
+    let startTime: Date, endTime: Date;
+
+    if (mergedEventData.start.date) {
+      // All-day event
+      startTime = new Date(mergedEventData.start.date);
+      endTime = new Date(
+        mergedEventData.end.date || mergedEventData.end.dateTime!
+      );
+    } else {
+      // Time-based event
+      startTime = new Date(mergedEventData.start.dateTime!);
+      endTime = new Date(mergedEventData.end.dateTime!);
+    }
+
+    if (startTime >= endTime) {
+      console.log(
+        `[GOOGLE-SERVICE] ${new Date().toISOString()} - Invalid time range detected, start: ${startTime.toISOString()}, end: ${endTime.toISOString()}`
+      );
+
+      // Fix invalid time range by ensuring end is after start
+      if (mergedEventData.start.date) {
+        // All-day event: ensure end date is at least 1 day after start
+        const newEndDate = new Date(startTime);
+        newEndDate.setDate(newEndDate.getDate() + 1);
+        mergedEventData.end = {
+          date: newEndDate.toISOString().split("T")[0],
+        };
+      } else {
+        // Time-based event: ensure end time is at least 1 hour after start
+        const newEndTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+        mergedEventData.end = {
+          dateTime: newEndTime.toISOString(),
+          timeZone: mergedEventData.start.timeZone || "UTC",
+        };
+      }
+
+      console.log(
+        `[GOOGLE-SERVICE] ${new Date().toISOString()} - Fixed time range: ${JSON.stringify(
+          mergedEventData.end
+        )}`
+      );
+    }
+
+    // Ensure format consistency - both start and end must use the same format
+    if (mergedEventData.start && mergedEventData.end) {
+      const isStartAllDay = !!mergedEventData.start.date;
+      const isEndAllDay = !!mergedEventData.end.date;
+
+      if (isStartAllDay !== isEndAllDay) {
+        console.log(
+          `[GOOGLE-SERVICE] ${new Date().toISOString()} - Format mismatch detected, fixing consistency`
+        );
+
+        if (isStartAllDay) {
+          // Start is all-day, make end all-day too
+          if (mergedEventData.end.dateTime) {
+            const endDate = new Date(mergedEventData.end.dateTime);
+            mergedEventData.end = {
+              date: endDate.toISOString().split("T")[0],
+            };
+            console.log(
+              `[GOOGLE-SERVICE] ${new Date().toISOString()} - Converted end to all-day format: ${JSON.stringify(
+                mergedEventData.end
+              )}`
+            );
+          }
+        } else {
+          // Start is time-based, make end time-based too
+          if (mergedEventData.end.date) {
+            const endDate = new Date(mergedEventData.end.date);
+            // Set to end of the day
+            endDate.setHours(23, 59, 59, 999);
+            mergedEventData.end = {
+              dateTime: endDate.toISOString(),
+              timeZone: mergedEventData.start.timeZone || "UTC",
+            };
+            console.log(
+              `[GOOGLE-SERVICE] ${new Date().toISOString()} - Converted end to time-based format: ${JSON.stringify(
+                mergedEventData.end
+              )}`
+            );
+          }
+        }
+      }
+    }
+
+    console.log(
+      `[GOOGLE-SERVICE] ${new Date().toISOString()} - Merged event data: ${JSON.stringify(
+        {
+          start: mergedEventData.start,
+          end: mergedEventData.end,
+          allDay: mergedEventData.start?.date ? true : false,
+        }
+      )}`
+    );
+
+    const response = await calendar.events.update({
+      calendarId: calendarId,
+      eventId: eventId,
+      requestBody: mergedEventData,
       sendUpdates: "all",
     });
 
