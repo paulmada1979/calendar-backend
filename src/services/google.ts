@@ -91,6 +91,7 @@ export async function listEvents(
     singleEvents?: boolean;
     orderBy?: "startTime" | "updated";
     pageToken?: string;
+    calendarId?: string;
   } & Record<string, any>
 ): Promise<calendar_v3.Schema$Events> {
   const startTime = Date.now();
@@ -120,7 +121,7 @@ export async function listEvents(
     }
 
     const requestParams = {
-      calendarId: "primary",
+      calendarId: params.calendarId || "primary",
       timeMin: params.timeMin,
       timeMax: params.timeMax,
       maxResults: params.maxResults ?? 2500,
@@ -387,6 +388,20 @@ export async function listCalendars(
     console.log(
       `[GOOGLE-SERVICE] ${new Date().toISOString()} - Calendar list fetched successfully in ${responseTime}ms - Calendars returned: ${calendarCount}`
     );
+
+    // Debug: Log each calendar's details
+    if (response.data.items) {
+      response.data.items.forEach((cal, index) => {
+        console.log(`[GOOGLE-SERVICE] Calendar ${index + 1}:`, {
+          id: cal.id,
+          summary: cal.summary,
+          primary: cal.primary,
+          accessRole: cal.accessRole,
+          selected: cal.selected,
+          description: cal.description,
+        });
+      });
+    }
 
     return response.data.items || [];
   } catch (error) {

@@ -7,11 +7,12 @@ export type FullCalendarEvent = {
   end?: string;
   allDay?: boolean;
   url?: string;
+  calendarId?: string;
   extendedProps?: Record<string, unknown>;
 };
 
 export function mapGoogleEventsToFullCalendar(
-  events: calendar_v3.Schema$Event[] = []
+  events: (calendar_v3.Schema$Event & { calendarId?: string })[] = []
 ): FullCalendarEvent[] {
   return events.map((e) => {
     const start = e.start?.dateTime || e.start?.date;
@@ -24,6 +25,7 @@ export function mapGoogleEventsToFullCalendar(
       end,
       allDay: isAllDay,
       url: e.htmlLink || undefined,
+      calendarId: e.calendarId,
       extendedProps: {
         location: e.location,
         description: e.description,

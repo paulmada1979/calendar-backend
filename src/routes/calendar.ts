@@ -279,20 +279,33 @@ calendarRouter.get(
   async (req: AuthenticatedRequest, res) => {
     const startTime = Date.now();
     const userId = req.user!.id;
-    const { start, end, q, maxResults, singleEvents, orderBy, pageToken } =
-      req.query as Record<string, string>;
+    const {
+      start,
+      end,
+      q,
+      maxResults,
+      singleEvents,
+      orderBy,
+      pageToken,
+      calendarIds,
+    } = req.query as Record<string, string>;
 
     try {
       // Validate date parameters
       const validatedStart = validateDateParam(start, "start");
       const validatedEnd = validateDateParam(end, "end");
 
+      // Parse calendar IDs for filtering
+      const selectedCalendarIds = calendarIds
+        ? calendarIds.split(",")
+        : ["primary"];
+
       console.log(
         `[CALENDAR] ${new Date().toISOString()} - Fetching events for user: ${userId} - Start: ${
           validatedStart || "none"
         }, End: ${validatedEnd || "none"}, Query: ${q || "none"}, MaxResults: ${
           maxResults || "default"
-        }`
+        }, Calendars: ${selectedCalendarIds.join(", ")}`
       );
 
       console.log(
@@ -388,56 +401,67 @@ calendarRouter.get(
         });
       }
 
-      let data;
-      try {
-        data = await listEvents(validTokens, {
-          timeMin: validatedStart || undefined,
-          timeMax: validatedEnd || undefined,
-          q,
-          maxResults: maxResults ? Number(maxResults) : undefined,
-          singleEvents: singleEvents ? singleEvents === "true" : true,
-          orderBy: orderBy === "updated" ? "updated" : "startTime",
-          pageToken,
-        });
-      } catch (apiError: any) {
-        console.error(
-          `[CALENDAR] ${new Date().toISOString()} - Google Calendar API error for user: ${userId} - ${
-            apiError.message
-          }`
-        );
+      let allEvents: any[] = [];
 
-        // Handle specific Google Calendar API errors
-        if (apiError.message.includes("Insufficient Permission")) {
-          return res.status(403).json({
-            error:
-              "Insufficient permission to access Google Calendar. Please check your calendar permissions.",
-            code: "INSUFFICIENT_PERMISSION",
+      // Fetch events from each selected calendar
+      for (const calendarId of selectedCalendarIds) {
+        try {
+          console.log(
+            `[CALENDAR] ${new Date().toISOString()} - Fetching events from calendar: ${calendarId} for user: ${userId}`
+          );
+
+          const calendarData = await listEvents(validTokens, {
+            timeMin: validatedStart || undefined,
+            timeMax: validatedEnd || undefined,
+            q,
+            maxResults: maxResults ? Number(maxResults) : undefined,
+            singleEvents: singleEvents ? singleEvents === "true" : true,
+            orderBy: orderBy === "updated" ? "updated" : "startTime",
+            pageToken,
+            calendarId: calendarId, // Pass specific calendar ID
           });
-        }
 
-        if (apiError.message.includes("Not Found")) {
-          return res.status(404).json({
-            error:
-              "Google Calendar not found. Please check your calendar settings.",
-            code: "CALENDAR_NOT_FOUND",
-          });
-        }
+          // Add calendarId to each event
+          const eventsWithCalendarId = (calendarData.items || []).map(
+            (event) => ({
+              ...event,
+              calendarId: calendarId,
+            })
+          );
 
-        throw new Error(`Google Calendar API error: ${apiError.message}`);
+          allEvents = allEvents.concat(eventsWithCalendarId);
+
+          console.log(
+            `[CALENDAR] ${new Date().toISOString()} - Fetched ${
+              eventsWithCalendarId.length
+            } events from calendar: ${calendarId}`
+          );
+        } catch (calendarError: any) {
+          console.error(
+            `[CALENDAR] ${new Date().toISOString()} - Error fetching events from calendar ${calendarId} for user: ${userId} - ${
+              calendarError.message
+            }`
+          );
+
+          // Continue with other calendars if one fails
+          continue;
+        }
       }
 
-      const items = mapGoogleEventsToFullCalendar(data.items || []);
+      const items = mapGoogleEventsToFullCalendar(allEvents);
       const responseTime = Date.now() - startTime;
 
       console.log(
         `[CALENDAR] ${new Date().toISOString()} - Events fetched successfully for user: ${userId} in ${responseTime}ms - Total events: ${
           items.length
-        }, Raw events: ${data.items?.length || 0}`
+        }, Raw events: ${
+          allEvents.length
+        }, Calendars: ${selectedCalendarIds.join(", ")}`
       );
 
       res.json({
         events: items,
-        raw: process.env.NODE_ENV === "development" ? data : undefined,
+        raw: process.env.NODE_ENV === "development" ? allEvents : undefined,
       });
     } catch (err: any) {
       const responseTime = Date.now() - startTime;
