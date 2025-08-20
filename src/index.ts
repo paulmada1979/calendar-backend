@@ -51,32 +51,12 @@ app.get("/health", (_req, res) => {
 
 // Test logging endpoint
 app.get("/test-logging", (_req, res) => {
-  console.log(
-    `[TEST] ${new Date().toISOString()} - Test logging endpoint called`
-  );
-  console.log(
-    `[TEST] ${new Date().toISOString()} - Environment: ${
-      process.env.NODE_ENV || "development"
-    }`
-  );
-  console.log(
-    `[TEST] ${new Date().toISOString()} - Log level: ${
-      process.env.LOG_LEVEL || "INFO"
-    }`
-  );
-
   res.json({
     message: "Logging test completed",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
     logLevel: process.env.LOG_LEVEL || "INFO",
   });
-});
-
-// Log all requests to console
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
 });
 
 app.use("/auth", authRouter);
@@ -99,24 +79,10 @@ app.use(
 
 // 404 handler
 app.use((req, res) => {
-  console.log(
-    `[404] ${new Date().toISOString()} - ${req.method} ${req.url} - Not Found`
-  );
   res.status(404).json({ error: "Not Found" });
 });
 
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
-  console.log(
-    `[INFO] ${new Date().toISOString()} - Calendar backend listening on http://localhost:${port}`
-  );
-  console.log(`[INFO] Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(
-    `[INFO] Morgan logging enabled with ${
-      process.env.NODE_ENV === "development" ? "custom" : "combined"
-    } format`
-  );
-  console.log(
-    `[INFO] Test logging endpoint available at: http://localhost:${port}/test-logging`
-  );
+  // Server started successfully
 });

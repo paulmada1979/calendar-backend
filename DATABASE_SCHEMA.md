@@ -60,14 +60,14 @@ Stores user's world timeline configurations and timezone places.
   - `timezone_offset` (numeric(4,2), not null): Timezone offset in hours
 - `locale` (text, not null): Locale (default: 'en')
 - `display_order` (integer, not null): Display order for timeline (default: 0)
-- `is_active` (boolean, not null): Whether the place is active (default: true)
+- `is_active` (boolean, not null): Whether the place is active (default: true) - **Note: This field is deprecated and no longer used. Records are now hard deleted.**
 - `created_at` (timestamptz): Record creation timestamp
 - `updated_at` (timestamptz): Record update timestamp
 
 **Indexes:**
 
 - `idx_user_timelines_user`: On user_id
-- `idx_user_timelines_active`: On user_id and is_active
+- `idx_user_timelines_active`: On user_id and is_active - **Note: This index is deprecated and no longer used.**
 
 ### 4. calendar_events
 

@@ -120,7 +120,6 @@ export class UserPreferencesService {
         .from("user_timelines")
         .select("*")
         .eq("user_id", userId)
-        .eq("is_active", true)
         .order("display_order", { ascending: true });
 
       if (error) {
@@ -150,7 +149,6 @@ export class UserPreferencesService {
         .from("user_timelines")
         .select("display_order")
         .eq("user_id", userId)
-        .eq("is_active", true)
         .order("display_order", { ascending: false })
         .limit(1);
 
@@ -218,13 +216,13 @@ export class UserPreferencesService {
   }
 
   /**
-   * Remove timeline place (soft delete by setting is_active to false)
+   * Remove timeline place (hard delete from database)
    */
   static async removeTimelinePlace(timelineId: string): Promise<void> {
     try {
       const { error } = await supabase
         .from("user_timelines")
-        .update({ is_active: false })
+        .delete()
         .eq("id", timelineId);
 
       if (error) {

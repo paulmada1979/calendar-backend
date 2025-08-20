@@ -11,19 +11,10 @@ authRouter.get(
   "/google/url",
   isAuth,
   async (req: AuthenticatedRequest, res) => {
-    const startTime = Date.now();
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Starting Google OAuth flow for user: ${
-        req.user!.id
-      }`
-    );
-
     try {
       const stateSecret = process.env.STATE_JWT_SECRET;
       if (!stateSecret) {
-        console.error(
-          `[AUTH] ${new Date().toISOString()} - Missing STATE_JWT_SECRET environment variable`
-        );
+        console.error("Missing STATE_JWT_SECRET environment variable");
         return res.status(500).json({ error: "Missing STATE_JWT_SECRET" });
       }
 
@@ -34,21 +25,9 @@ authRouter.get(
       );
 
       const url = getAuthUrl(state);
-      const responseTime = Date.now() - startTime;
-
-      console.log(
-        `[AUTH] ${new Date().toISOString()} - Google OAuth URL generated successfully for user: ${
-          req.user!.id
-        } in ${responseTime}ms`
-      );
       res.json({ url });
     } catch (err: any) {
-      const responseTime = Date.now() - startTime;
-      console.error(
-        `[AUTH] ${new Date().toISOString()} - Error generating Google OAuth URL for user: ${
-          req.user!.id
-        } in ${responseTime}ms - ${err.message}`
-      );
+      console.error(`Error generating Google OAuth URL: ${err.message}`);
       res.status(500).json({ error: err.message });
     }
   }
@@ -59,19 +38,10 @@ authRouter.post(
   "/google/url",
   isAuth,
   async (req: AuthenticatedRequest, res) => {
-    const startTime = Date.now();
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Starting Google OAuth flow for user: ${
-        req.user!.id
-      }`
-    );
-
     try {
       const stateSecret = process.env.STATE_JWT_SECRET;
       if (!stateSecret) {
-        console.error(
-          `[AUTH] ${new Date().toISOString()} - Missing STATE_JWT_SECRET environment variable`
-        );
+        console.error("Missing STATE_JWT_SECRET environment variable");
         return res.status(500).json({ error: "Missing STATE_JWT_SECRET" });
       }
 
@@ -82,21 +52,9 @@ authRouter.post(
       );
 
       const url = getAuthUrl(state);
-      const responseTime = Date.now() - startTime;
-
-      console.log(
-        `[AUTH] ${new Date().toISOString()} - Google OAuth URL generated successfully for user: ${
-          req.user!.id
-        } in ${responseTime}ms`
-      );
       res.json({ url });
     } catch (err: any) {
-      const responseTime = Date.now() - startTime;
-      console.error(
-        `[AUTH] ${new Date().toISOString()} - Error generating Google OAuth URL for user: ${
-          req.user!.id
-        } in ${responseTime}ms - ${err.message}`
-      );
+      console.error(`Error generating Google OAuth URL: ${err.message}`);
       res.status(500).json({ error: err.message });
     }
   }
@@ -104,28 +62,17 @@ authRouter.post(
 
 // OAuth callback
 authRouter.get("/google/callback", async (req, res) => {
-  const startTime = Date.now();
   const { code, state } = req.query as { code?: string; state?: string };
 
-  console.log(
-    `[AUTH] ${new Date().toISOString()} - Google OAuth callback received - Code: ${
-      code ? "Present" : "Missing"
-    }, State: ${state ? "Present" : "Missing"}`
-  );
-
   if (!code || !state) {
-    console.error(
-      `[AUTH] ${new Date().toISOString()} - Missing code or state in callback`
-    );
+    console.error("Missing code or state in callback");
     return res.status(400).send("Missing code or state");
   }
 
   try {
     const stateSecret = process.env.STATE_JWT_SECRET;
     if (!stateSecret) {
-      console.error(
-        `[AUTH] ${new Date().toISOString()} - Missing STATE_JWT_SECRET environment variable`
-      );
+      console.error("Missing STATE_JWT_SECRET environment variable");
       return res.status(500).send("Missing STATE_JWT_SECRET");
     }
 
@@ -133,28 +80,17 @@ authRouter.get("/google/callback", async (req, res) => {
     try {
       const decoded = jwt.verify(state, stateSecret) as any;
       userId = decoded.user_id;
-      console.log(
-        `[AUTH] ${new Date().toISOString()} - State verified successfully for user: ${userId}`
-      );
     } catch {
-      console.error(`[AUTH] ${new Date().toISOString()} - Invalid state token`);
+      console.error("Invalid state token");
       return res.status(400).send("Invalid state");
     }
 
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Exchanging code for tokens for user: ${userId}`
-    );
     const tokens = await exchangeCodeForTokens(code);
 
     if (!tokens.access_token || !tokens.refresh_token) {
-      console.warn(
-        `[AUTH] ${new Date().toISOString()} - Missing tokens for user: ${userId} - Access token: ${!!tokens.access_token}, Refresh token: ${!!tokens.refresh_token}`
-      );
+      console.warn("Missing tokens in OAuth response");
     }
 
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Storing tokens in database for user: ${userId}`
-    );
     await pgPool.query(
       `insert into public.google_calendar_connections (
         user_id, access_token, refresh_token, scope, token_type, expiry_date
@@ -177,20 +113,9 @@ authRouter.get("/google/callback", async (req, res) => {
     );
 
     const redirect = process.env.APP_URL || "http://localhost:3000";
-    const responseTime = Date.now() - startTime;
-
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Google OAuth completed successfully for user: ${userId} in ${responseTime}ms - Redirecting to: ${redirect}/calendar?connected=google`
-    );
     return res.redirect(`${redirect}/calendar?connected=google`);
   } catch (err: any) {
-    const responseTime = Date.now() - startTime;
-    console.error(
-      `[AUTH] ${new Date().toISOString()} - Google OAuth callback failed in ${responseTime}ms - ${
-        err.message
-      }`
-    );
-    console.error(err.stack);
+    console.error(`Google OAuth callback failed: ${err.message}`);
     return res.status(500).send("Failed to handle callback");
   }
 });
@@ -200,34 +125,17 @@ authRouter.post(
   "/google/disconnect",
   isAuth,
   async (req: AuthenticatedRequest, res) => {
-    const startTime = Date.now();
     const userId = req.user!.id;
 
-    console.log(
-      `[AUTH] ${new Date().toISOString()} - Disconnecting Google Calendar for user: ${userId}`
-    );
-
     try {
-      const result = await pgPool.query(
+      await pgPool.query(
         "delete from public.google_calendar_connections where user_id = $1",
         [userId]
       );
 
-      const responseTime = Date.now() - startTime;
-      console.log(
-        `[AUTH] ${new Date().toISOString()} - Google Calendar disconnected successfully for user: ${userId} in ${responseTime}ms - Rows affected: ${
-          result.rowCount
-        }`
-      );
-
       res.json({ success: true });
     } catch (err: any) {
-      const responseTime = Date.now() - startTime;
-      console.error(
-        `[AUTH] ${new Date().toISOString()} - Error disconnecting Google Calendar for user: ${userId} in ${responseTime}ms - ${
-          err.message
-        }`
-      );
+      console.error(`Error disconnecting Google Calendar: ${err.message}`);
       res.status(500).json({ error: err.message });
     }
   }
