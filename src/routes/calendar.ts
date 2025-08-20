@@ -15,6 +15,7 @@ import {
   getValidTokens,
 } from "../services/google";
 import { mapGoogleEventsToFullCalendar } from "../utils/fullcalendar";
+import { CalendarEventsService } from "../services/calendarEvents";
 
 export const calendarRouter = express.Router();
 
@@ -448,6 +449,40 @@ calendarRouter.get(
           // Continue with other calendars if one fails
           continue;
         }
+      }
+
+      // Store events in local database for persistence
+      try {
+        console.log(
+          `[CALENDAR] ${new Date().toISOString()} - Storing ${
+            allEvents.length
+          } events in local database for user: ${userId}`
+        );
+
+        for (const calendarId of selectedCalendarIds) {
+          const calendarEvents = allEvents.filter(
+            (event) => event.calendarId === calendarId
+          );
+          if (calendarEvents.length > 0) {
+            await CalendarEventsService.storeGoogleEvents(
+              userId,
+              calendarId,
+              calendarEvents
+            );
+            console.log(
+              `[CALENDAR] ${new Date().toISOString()} - Stored ${
+                calendarEvents.length
+              } events from calendar: ${calendarId}`
+            );
+          }
+        }
+      } catch (storageError: any) {
+        console.error(
+          `[CALENDAR] ${new Date().toISOString()} - Warning: Failed to store events in local database for user: ${userId} - ${
+            storageError.message
+          }`
+        );
+        // Continue with the response even if storage fails
       }
 
       const items = mapGoogleEventsToFullCalendar(allEvents);

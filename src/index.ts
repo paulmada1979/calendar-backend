@@ -5,6 +5,7 @@ import morgan from "morgan";
 
 import { authRouter } from "./routes/auth";
 import { calendarRouter } from "./routes/calendar";
+import userPreferencesRouter from "./routes/userPreferences";
 
 const app = express();
 
@@ -80,6 +81,7 @@ app.use((req, res, next) => {
 
 app.use("/auth", authRouter);
 app.use("/calendar", calendarRouter);
+app.use("/user", userPreferencesRouter);
 
 // Error handling middleware
 app.use(
