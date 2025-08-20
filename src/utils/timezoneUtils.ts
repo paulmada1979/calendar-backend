@@ -96,7 +96,7 @@ export function isValidTimezone(timezone: string): boolean {
 export function getCommonTimezones(): Array<{
   value: string;
   label: string;
-  offset: number;
+  timezone_offset: number;
   city: string;
   country: string;
 }> {

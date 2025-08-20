@@ -19,7 +19,6 @@ export interface UserTimeline {
   timezone_offset: number;
   locale: string;
   display_order: number;
-  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -192,7 +191,6 @@ export class UserPreferencesService {
         | "timezone_offset"
         | "locale"
         | "display_order"
-        | "is_active"
       >
     >
   ): Promise<UserTimeline> {

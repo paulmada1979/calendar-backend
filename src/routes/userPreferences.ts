@@ -1,11 +1,11 @@
 import express from "express";
-import { isAuth } from "../middleware/isAuth";
+import { isAuth, AuthenticatedRequest } from "../middleware/isAuth";
 import { UserPreferencesService } from "../services/userPreferences";
 
 const router = express.Router();
 
 // Get user preferences
-router.get("/preferences", isAuth, async (req, res) => {
+router.get("/preferences", isAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -21,7 +21,7 @@ router.get("/preferences", isAuth, async (req, res) => {
 });
 
 // Update user preferences
-router.put("/preferences", isAuth, async (req, res) => {
+router.put("/preferences", isAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -52,7 +52,7 @@ router.put("/preferences", isAuth, async (req, res) => {
 });
 
 // Get user timeline places
-router.get("/timelines", isAuth, async (req, res) => {
+router.get("/timelines", isAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -68,7 +68,7 @@ router.get("/timelines", isAuth, async (req, res) => {
 });
 
 // Add timeline place
-router.post("/timelines", isAuth, async (req, res) => {
+router.post("/timelines", isAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -97,6 +97,7 @@ router.post("/timelines", isAuth, async (req, res) => {
       zone,
       timezone_offset: parseFloat(timezone_offset),
       locale: locale || "en",
+      display_order: 0, // Will be set by the service
     });
 
     res.json({ timeline });
@@ -107,7 +108,7 @@ router.post("/timelines", isAuth, async (req, res) => {
 });
 
 // Update timeline place
-router.put("/timelines/:id", isAuth, async (req, res) => {
+router.put("/timelines/:id", isAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -139,44 +140,52 @@ router.put("/timelines/:id", isAuth, async (req, res) => {
 });
 
 // Remove timeline place
-router.delete("/timelines/:id", isAuth, async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "User not authenticated" });
+router.delete(
+  "/timelines/:id",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { id } = req.params;
+      await UserPreferencesService.removeTimelinePlace(id);
+
+      res.json({ message: "Timeline place removed successfully" });
+    } catch (error) {
+      console.error("Error removing timeline place:", error);
+      res.status(500).json({ error: "Failed to remove timeline place" });
     }
-
-    const { id } = req.params;
-    await UserPreferencesService.removeTimelinePlace(id);
-
-    res.json({ message: "Timeline place removed successfully" });
-  } catch (error) {
-    console.error("Error removing timeline place:", error);
-    res.status(500).json({ error: "Failed to remove timeline place" });
   }
-});
+);
 
 // Reorder timeline places
-router.put("/timelines/reorder", isAuth, async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "User not authenticated" });
+router.put(
+  "/timelines/reorder",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { timelineIds } = req.body;
+
+      if (!Array.isArray(timelineIds) || timelineIds.length === 0) {
+        return res.status(400).json({ error: "timelineIds array is required" });
+      }
+
+      await UserPreferencesService.reorderTimelinePlaces(userId, timelineIds);
+
+      res.json({ message: "Timeline order updated successfully" });
+    } catch (error) {
+      console.error("Error reordering timeline places:", error);
+      res.status(500).json({ error: "Failed to reorder timeline places" });
     }
-
-    const { timelineIds } = req.body;
-
-    if (!Array.isArray(timelineIds) || timelineIds.length === 0) {
-      return res.status(400).json({ error: "timelineIds array is required" });
-    }
-
-    await UserPreferencesService.reorderTimelinePlaces(userId, timelineIds);
-
-    res.json({ message: "Timeline order updated successfully" });
-  } catch (error) {
-    console.error("Error reordering timeline places:", error);
-    res.status(500).json({ error: "Failed to reorder timeline places" });
   }
-});
+);
 
 export default router;
