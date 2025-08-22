@@ -2,10 +2,12 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 
 import { authRouter } from "./routes/auth";
 import { calendarRouter } from "./routes/calendar";
 import userPreferencesRouter from "./routes/userPreferences";
+import socialMediaRouter from "./routes/socialMedia";
 
 const app = express();
 
@@ -43,10 +45,78 @@ app.use(
   cors({ origin: process.env.APP_URL?.split(",") || "*", credentials: true })
 );
 app.use(express.json());
+app.use(cookieParser());
 
 // Health check endpoint
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Test authentication endpoint
+app.get("/test-auth", (req, res) => {
+  const authHeader = req.headers.authorization;
+  const cookies = req.cookies;
+  const userId = req.headers["x-user-id"];
+
+  res.json({
+    message: "Authentication test endpoint",
+    authHeader: authHeader ? "Present" : "Missing",
+    cookies: cookies ? Object.keys(cookies) : "No cookies",
+    xUserId: userId || "Missing",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Test Composio configuration endpoint
+app.get("/test-composio", async (req, res) => {
+  const composioApiKey = process.env.COMPOSIO_API_KEY;
+  const composioBaseUrl = process.env.COMPOSIO_BASE_URL;
+
+  // Import the service to get status
+  const { composioService } = await import("./services/composio");
+
+  res.json({
+    message: "Composio configuration test",
+    hasApiKey: !!composioApiKey,
+    apiKeyLength: composioApiKey ? composioApiKey.length : 0,
+    baseUrl: composioBaseUrl || "Not set",
+    nodeEnv: process.env.NODE_ENV || "Not set",
+    sdkStatus: composioService.getStatus(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Test database connection and table existence
+app.get("/test-db", async (req, res) => {
+  try {
+    const { pgPool } = await import("./lib/pg");
+
+    // Test basic connection
+    const result = await pgPool.query("SELECT NOW() as current_time");
+
+    // Test if connected_accounts table exists
+    let tableExists = false;
+    try {
+      await pgPool.query("SELECT 1 FROM connected_accounts LIMIT 1");
+      tableExists = true;
+    } catch (tableError) {
+      tableExists = false;
+    }
+
+    res.json({
+      message: "Database connection test",
+      database: {
+        connected: true,
+        currentTime: result.rows[0]?.current_time,
+        connectedAccountsTable: tableExists ? "Exists" : "Missing",
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: "Database connection test failed",
+      error: error.message,
+    });
+  }
 });
 
 // Test logging endpoint
@@ -62,6 +132,7 @@ app.get("/test-logging", (_req, res) => {
 app.use("/auth", authRouter);
 app.use("/calendar", calendarRouter);
 app.use("/user", userPreferencesRouter);
+app.use("/social", socialMediaRouter);
 
 // Error handling middleware
 app.use(
@@ -85,4 +156,5 @@ app.use((req, res) => {
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
   // Server started successfully
+  console.log(`Server is running on port ${port}`);
 });
