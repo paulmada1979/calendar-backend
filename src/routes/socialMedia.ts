@@ -2,6 +2,8 @@ import express from "express";
 import { isAuth, AuthenticatedRequest } from "../middleware/isAuth";
 import { composioService } from "../services/composio";
 import { connectedAccountsService } from "../services/connectedAccounts";
+import { googleDriveService } from "../services/googleDrive";
+import { googleDriveDocumentsService } from "../services/googleDriveDocuments";
 
 export const socialMediaRouter = express.Router();
 
@@ -379,6 +381,25 @@ socialMediaRouter.get("/callback/:provider", async (req, res) => {
           `[SOCIAL-MEDIA-ROUTES] Last validated time updated successfully`
         );
 
+        // Auto-sync Google Drive documents if this is a Google Drive connection
+        if (provider === "googledrive") {
+          try {
+            console.log(
+              `[SOCIAL-MEDIA-ROUTES] Auto-syncing Google Drive documents for user ${userId}...`
+            );
+            const syncResult =
+              await googleDriveDocumentsService.syncUserDocuments(userId);
+            console.log(
+              `[SOCIAL-MEDIA-ROUTES] Auto-sync completed: ${syncResult.total} documents found`
+            );
+          } catch (syncError: any) {
+            console.error(
+              `[SOCIAL-MEDIA-ROUTES] Auto-sync failed: ${syncError.message}`
+            );
+            // Don't fail the OAuth flow if sync fails
+          }
+        }
+
         // Clean up OAuth state
         composioService.cleanupOAuthState(connectedAccountId.toString());
 
@@ -456,6 +477,26 @@ socialMediaRouter.get("/callback/:provider", async (req, res) => {
     console.log(
       `[SOCIAL-MEDIA-ROUTES] Last validated time updated successfully`
     );
+
+    // Auto-sync Google Drive documents if this is a Google Drive connection
+    if (provider === "googledrive") {
+      try {
+        console.log(
+          `[SOCIAL-MEDIA-ROUTES] Auto-syncing Google Drive documents for user ${userId}...`
+        );
+        const syncResult = await googleDriveDocumentsService.syncUserDocuments(
+          userId
+        );
+        console.log(
+          `[SOCIAL-MEDIA-ROUTES] Auto-sync completed: ${syncResult.total} documents found`
+        );
+      } catch (syncError: any) {
+        console.error(
+          `[SOCIAL-MEDIA-ROUTES] Auto-sync failed: ${syncError.message}`
+        );
+        // Don't fail the OAuth flow if sync fails
+      }
+    }
 
     console.log(
       `[SOCIAL-MEDIA-ROUTES] Successfully created connected account:`,
@@ -627,6 +668,537 @@ socialMediaRouter.get(
         `[SOCIAL-MEDIA-ROUTES] Error fetching connection stats: ${error.message}`
       );
       res.status(500).json({ error: "Failed to fetch connection stats" });
+    }
+  }
+);
+
+// ===== GOOGLE DRIVE ROUTES =====
+
+// Get all files from Google Drive
+socialMediaRouter.get(
+  "/google-drive/files",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { pageToken, pageSize = 100 } = req.query;
+
+      const result = await googleDriveService.getAllFiles(
+        userId,
+        pageToken as string,
+        Number(pageSize)
+      );
+
+      res.json({
+        success: true,
+        files: result.files,
+        nextPageToken: result.nextPageToken,
+        totalFiles: result.files.length,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting files: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Search files in Google Drive
+socialMediaRouter.get(
+  "/google-drive/search",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { q, pageToken, pageSize = 100 } = req.query;
+
+      if (!q) {
+        return res.status(400).json({ error: "Search query 'q' is required" });
+      }
+
+      const result = await googleDriveService.searchFiles(
+        userId,
+        q as string,
+        pageToken as string,
+        Number(pageSize)
+      );
+
+      res.json({
+        success: true,
+        files: result.files,
+        nextPageToken: result.nextPageToken,
+        totalFiles: result.files.length,
+        query: q,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error searching files: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get file details
+socialMediaRouter.get(
+  "/google-drive/files/:fileId",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fileId } = req.params;
+
+      const file = await googleDriveService.getFileDetails(userId, fileId);
+
+      res.json({
+        success: true,
+        file,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting file details: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get folder contents
+socialMediaRouter.get(
+  "/google-drive/folders/:folderId",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { folderId } = req.params;
+      const { pageToken, pageSize = 100 } = req.query;
+
+      const result = await googleDriveService.getFolderContents(
+        userId,
+        folderId,
+        pageToken as string,
+        Number(pageSize)
+      );
+
+      res.json({
+        success: true,
+        folderId,
+        files: result.files,
+        nextPageToken: result.nextPageToken,
+        totalFiles: result.files.length,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting folder contents: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Create a new folder
+socialMediaRouter.post(
+  "/google-drive/folders",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { name, parentFolderId } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ error: "Folder name is required" });
+      }
+
+      const folder = await googleDriveService.createFolder(
+        userId,
+        name,
+        parentFolderId
+      );
+
+      res.json({
+        success: true,
+        folder,
+        message: "Folder created successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error creating folder: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Upload a file
+socialMediaRouter.post(
+  "/google-drive/upload",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fileName, mimeType, content, parentFolderId } = req.body;
+
+      if (!fileName || !mimeType || !content) {
+        return res.status(400).json({
+          error: "fileName, mimeType, and content are required",
+        });
+      }
+
+      const file = await googleDriveService.uploadFile(
+        userId,
+        fileName,
+        mimeType,
+        content,
+        parentFolderId
+      );
+
+      res.json({
+        success: true,
+        file,
+        message: "File uploaded successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error uploading file: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get file permissions
+socialMediaRouter.get(
+  "/google-drive/files/:fileId/permissions",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fileId } = req.params;
+
+      const permissions = await googleDriveService.getFilePermissions(
+        userId,
+        fileId
+      );
+
+      res.json({
+        success: true,
+        fileId,
+        permissions,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting file permissions: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Update file permissions
+socialMediaRouter.post(
+  "/google-drive/files/:fileId/permissions",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fileId } = req.params;
+      const { type, role, emailAddress, domain, allowFileDiscovery } = req.body;
+
+      if (!type || !role) {
+        return res.status(400).json({
+          error: "type and role are required",
+        });
+      }
+
+      const permission = await googleDriveService.updateFilePermissions(
+        userId,
+        fileId,
+        {
+          type,
+          role,
+          emailAddress,
+          domain,
+          allowFileDiscovery,
+        }
+      );
+
+      res.json({
+        success: true,
+        permission,
+        message: "Permission updated successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error updating file permissions: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Delete file permissions
+socialMediaRouter.delete(
+  "/google-drive/files/:fileId/permissions/:permissionId",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fileId, permissionId } = req.params;
+
+      await googleDriveService.deleteFilePermissions(
+        userId,
+        fileId,
+        permissionId
+      );
+
+      res.json({
+        success: true,
+        message: "Permission deleted successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error deleting file permissions: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get storage quota
+socialMediaRouter.get(
+  "/google-drive/quota",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+
+      const quota = await googleDriveService.getStorageQuota(userId);
+
+      res.json({
+        success: true,
+        quota,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting storage quota: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get Google Drive user profile
+socialMediaRouter.get(
+  "/google-drive/profile",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+
+      const profile = await googleDriveService.getUserProfile(userId);
+
+      res.json({
+        success: true,
+        profile,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-ROUTES] Error getting user profile: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ===== GOOGLE DRIVE DOCUMENTS ROUTES =====
+
+// Sync all documents from Google Drive for a user
+socialMediaRouter.post(
+  "/google-drive/sync-documents",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+
+      console.log(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Starting document sync for user: ${userId}`
+      );
+
+      const syncResult = await googleDriveDocumentsService.syncUserDocuments(
+        userId
+      );
+
+      res.json({
+        success: true,
+        message: "Documents synced successfully",
+        result: syncResult,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error syncing documents: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get all documents for a user
+socialMediaRouter.get(
+  "/google-drive/documents",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { limit = 100, offset = 0 } = req.query;
+
+      const result = await googleDriveDocumentsService.getUserDocuments(
+        userId,
+        Number(limit),
+        Number(offset)
+      );
+
+      res.json({
+        success: true,
+        documents: result.documents,
+        total: result.total,
+        limit: Number(limit),
+        offset: Number(offset),
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error getting documents: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get unprocessed documents for a user
+socialMediaRouter.get(
+  "/google-drive/documents/unprocessed",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { limit = 100 } = req.query;
+
+      const documents =
+        await googleDriveDocumentsService.getUnprocessedDocuments(
+          userId,
+          Number(limit)
+        );
+
+      res.json({
+        success: true,
+        documents,
+        count: documents.length,
+        limit: Number(limit),
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error getting unprocessed documents: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Get document statistics for a user
+socialMediaRouter.get(
+  "/google-drive/documents/stats",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+
+      const stats = await googleDriveDocumentsService.getDocumentStats(userId);
+
+      res.json({
+        success: true,
+        stats,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error getting document stats: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Mark document as processed
+socialMediaRouter.post(
+  "/google-drive/documents/:documentId/process",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { documentId } = req.params;
+      const { status, error } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ error: "Status is required" });
+      }
+
+      let updatedDocument;
+      if (status === "completed") {
+        updatedDocument = await googleDriveDocumentsService.markAsProcessed(
+          Number(documentId)
+        );
+      } else if (status === "failed") {
+        if (!error) {
+          return res
+            .status(400)
+            .json({ error: "Error message is required for failed status" });
+        }
+        updatedDocument = await googleDriveDocumentsService.markAsFailed(
+          Number(documentId),
+          error
+        );
+      } else {
+        updatedDocument =
+          await googleDriveDocumentsService.updateProcessingStatus(
+            Number(documentId),
+            status,
+            error
+          );
+      }
+
+      res.json({
+        success: true,
+        message: `Document marked as ${status}`,
+        document: updatedDocument,
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error updating document status: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Delete a document
+socialMediaRouter.delete(
+  "/google-drive/documents/:documentId",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { documentId } = req.params;
+
+      await googleDriveDocumentsService.deleteDocument(Number(documentId));
+
+      res.json({
+        success: true,
+        message: "Document deleted successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error deleting document: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
     }
   }
 );

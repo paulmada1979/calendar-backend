@@ -106,18 +106,18 @@ export class ComposioService {
         console.warn(
           "[COMPOSIO-SERVICE] SDK not initialized, returning default platforms"
         );
-        return ["linkedin", "facebook", "twitter", "instagram"];
+        return ["linkedin", "facebook", "twitter", "instagram", "googledrive"];
       }
 
       // TODO: Implement actual platform fetching when we understand the Composio Core API
-      // For now, return default platforms
+      // For now, return default platforms including Google Drive
       console.log(
         "[COMPOSIO-SERVICE] Using default platforms (Composio Core API integration pending)"
       );
-      return ["linkedin", "facebook", "twitter", "instagram"];
+      return ["linkedin", "facebook", "twitter", "instagram", "googledrive"];
     } catch (error) {
       console.error("[COMPOSIO-SERVICE] Error fetching platforms:", error);
-      return ["linkedin", "facebook", "twitter", "instagram"];
+      return ["linkedin", "facebook", "twitter", "instagram", "googledrive"];
     }
   }
 
@@ -1045,6 +1045,13 @@ export class ComposioService {
       facebook: ["email", "public_profile"],
       twitter: ["tweet.read", "users.read"],
       instagram: ["user_profile", "user_media"],
+      googledrive: [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
     };
 
     return scopes[provider] || ["read"];

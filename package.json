@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "test:logging": "npm run build && node test-logging.js",
     "debug:calendar": "node debug-calendar.js",
+    "test:google-drive": "node test-google-drive.js",
     "lint": "echo 'no linter configured'"
   },
   "dependencies": {
