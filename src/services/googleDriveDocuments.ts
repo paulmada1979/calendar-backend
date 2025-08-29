@@ -14,6 +14,9 @@ export interface GoogleDriveDocument {
   processed: boolean;
   processing_status: "pending" | "processing" | "completed" | "failed";
   processing_error?: string;
+  result?: any;
+  local_file_path?: string;
+  downloaded_at?: Date;
   created_at: Date;
   updated_at: Date;
 }
@@ -27,6 +30,8 @@ export interface DocumentToSave {
   file_size?: number;
   google_drive_web_view_link?: string;
   last_modified_at?: Date;
+  local_file_path?: string;
+  downloaded_at?: Date;
 }
 
 export class GoogleDriveDocumentsService {
@@ -108,8 +113,9 @@ export class GoogleDriveDocumentsService {
           const query = `
             INSERT INTO public.user_google_documents (
               user_id, google_drive_file_id, file_name, file_path, mime_type,
-              file_size, google_drive_web_view_link, last_modified_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              file_size, google_drive_web_view_link, last_modified_at,
+              local_file_path, downloaded_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (user_id, google_drive_file_id)
             DO UPDATE SET
               file_name = EXCLUDED.file_name,
@@ -118,6 +124,8 @@ export class GoogleDriveDocumentsService {
               file_size = EXCLUDED.file_size,
               google_drive_web_view_link = EXCLUDED.google_drive_web_view_link,
               last_modified_at = EXCLUDED.last_modified_at,
+              local_file_path = EXCLUDED.local_file_path,
+              downloaded_at = EXCLUDED.downloaded_at,
               updated_at = now()
             RETURNING *
           `;
@@ -131,6 +139,8 @@ export class GoogleDriveDocumentsService {
             doc.file_size,
             doc.google_drive_web_view_link,
             doc.last_modified_at,
+            doc.local_file_path,
+            doc.downloaded_at,
           ];
 
           const result = await client.query(query, values);
@@ -151,6 +161,29 @@ export class GoogleDriveDocumentsService {
         error
       );
       throw new Error(`Failed to save documents: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get a document by ID
+   */
+  async getDocumentById(
+    documentId: string
+  ): Promise<GoogleDriveDocument | null> {
+    try {
+      const query = `
+        SELECT * FROM public.user_google_documents
+        WHERE id = $1
+      `;
+
+      const result = await pgPool.query(query, [documentId]);
+      return result.rows[0] || null;
+    } catch (error: any) {
+      console.error(
+        "[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Error getting document by ID:",
+        error
+      );
+      throw new Error(`Failed to get document: ${error.message}`);
     }
   }
 
@@ -260,8 +293,46 @@ export class GoogleDriveDocumentsService {
   /**
    * Mark document as processed
    */
-  async markAsProcessed(documentId: number): Promise<GoogleDriveDocument> {
-    return this.updateProcessingStatus(documentId, "completed");
+  async markAsProcessed(
+    documentId: number,
+    additionalData?: { result?: any; processing_status?: string }
+  ): Promise<GoogleDriveDocument> {
+    try {
+      let query = `
+        UPDATE public.user_google_documents 
+        SET 
+          processed = true,
+          processing_status = $2,
+          updated_at = now()
+      `;
+
+      const values: any[] = [
+        documentId,
+        additionalData?.processing_status || "completed",
+      ];
+
+      // Add result field if provided
+      if (additionalData?.result !== undefined) {
+        query += `, result = $3`;
+        values.push(JSON.stringify(additionalData.result));
+      }
+
+      query += ` WHERE id = $1 RETURNING *`;
+
+      const result = await pgPool.query(query, values);
+
+      if (result.rows.length === 0) {
+        throw new Error(`Document with ID ${documentId} not found`);
+      }
+
+      return result.rows[0];
+    } catch (error: any) {
+      console.error(
+        "[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Error marking document as processed:",
+        error
+      );
+      throw new Error(`Failed to mark document as processed: ${error.message}`);
+    }
   }
 
   /**
@@ -394,19 +465,56 @@ export class GoogleDriveDocumentsService {
         `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Found ${documents.length} documents out of ${allFiles.files.length} total files`
       );
 
-      // Convert to DocumentToSave format
-      const documentsToSave: DocumentToSave[] = documents.map((file) => ({
-        user_id: userId,
-        google_drive_file_id: file.id,
-        file_name: file.name,
-        file_path: this.buildFilePath(file),
-        mime_type: file.mimeType,
-        file_size: file.size ? parseInt(file.size) : undefined,
-        google_drive_web_view_link: file.webViewLink,
-        last_modified_at: file.modifiedTime
-          ? new Date(file.modifiedTime)
-          : undefined,
-      }));
+      // Download all files to local temp folder
+      const { fileManagerService } = await import("./fileManager");
+      const { connectedAccountsService } = await import("./connectedAccounts");
+
+      // Get access token for Google Drive
+      const connectedAccount =
+        await connectedAccountsService.getConnectedAccountByProvider(
+          userId,
+          "googledrive"
+        );
+
+      if (!connectedAccount?.meta?.access_token) {
+        throw new Error("No Google Drive access token found");
+      }
+
+      // Download files to local storage
+      const downloadedFiles = await fileManagerService.downloadAllUserFiles(
+        userId,
+        connectedAccount.meta.access_token,
+        documents.map((file) => ({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+        }))
+      );
+
+      console.log(
+        `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Downloaded ${downloadedFiles.length} files to local storage`
+      );
+
+      // Convert to DocumentToSave format with local file paths
+      const documentsToSave: DocumentToSave[] = documents.map((file) => {
+        const downloadedFile = downloadedFiles.find(
+          (df) => df.fileId === file.id
+        );
+        return {
+          user_id: userId,
+          google_drive_file_id: file.id,
+          file_name: file.name,
+          file_path: this.buildFilePath(file),
+          mime_type: file.mimeType,
+          file_size: file.size ? parseInt(file.size) : undefined,
+          google_drive_web_view_link: file.webViewLink,
+          last_modified_at: file.modifiedTime
+            ? new Date(file.modifiedTime)
+            : undefined,
+          local_file_path: downloadedFile?.localInfo.localPath,
+          downloaded_at: downloadedFile?.localInfo.downloadedAt,
+        };
+      });
 
       // Save all documents
       const savedDocuments = await this.saveDocuments(documentsToSave);

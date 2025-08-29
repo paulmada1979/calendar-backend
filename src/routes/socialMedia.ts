@@ -4,6 +4,7 @@ import { composioService } from "../services/composio";
 import { connectedAccountsService } from "../services/connectedAccounts";
 import { googleDriveService } from "../services/googleDrive";
 import { googleDriveDocumentsService } from "../services/googleDriveDocuments";
+import { cronjobService } from "../services/cronjob";
 
 export const socialMediaRouter = express.Router();
 
@@ -1197,6 +1198,90 @@ socialMediaRouter.delete(
     } catch (error: any) {
       console.error(
         `[GOOGLE-DRIVE-DOCUMENTS-ROUTES] Error deleting document: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ============================================================================
+// CRONJOB CONTROL ENDPOINTS
+// ============================================================================
+
+// Get cronjob service status
+socialMediaRouter.get(
+  "/cronjob/status",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const status = cronjobService.getStatus();
+      res.json({
+        success: true,
+        status,
+      });
+    } catch (error: any) {
+      console.error(
+        `[CRONJOB-ROUTES] Error getting cronjob status: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Start cronjob service
+socialMediaRouter.post(
+  "/cronjob/start",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      cronjobService.start();
+      res.json({
+        success: true,
+        message: "Cronjob service started successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[CRONJOB-ROUTES] Error starting cronjob service: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Stop cronjob service
+socialMediaRouter.post(
+  "/cronjob/stop",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      cronjobService.stop();
+      res.json({
+        success: true,
+        message: "Cronjob service stopped successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[CRONJOB-ROUTES] Error stopping cronjob service: ${error.message}`
+      );
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Manually trigger document processing
+socialMediaRouter.post(
+  "/cronjob/trigger",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      await cronjobService.triggerProcessing();
+      res.json({
+        success: true,
+        message: "Document processing triggered successfully",
+      });
+    } catch (error: any) {
+      console.error(
+        `[CRONJOB-ROUTES] Error triggering document processing: ${error.message}`
       );
       res.status(500).json({ error: error.message });
     }

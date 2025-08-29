@@ -8,6 +8,7 @@ import { authRouter } from "./routes/auth";
 import { calendarRouter } from "./routes/calendar";
 import userPreferencesRouter from "./routes/userPreferences";
 import socialMediaRouter from "./routes/socialMedia";
+import { cronjobService } from "./services/cronjob";
 
 const app = express();
 
@@ -157,4 +158,12 @@ const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => {
   // Server started successfully
   console.log(`Server is running on port ${port}`);
+
+  // Start the cronjob service for processing Google Drive documents
+  try {
+    cronjobService.start();
+    console.log("✅ Cronjob service started successfully");
+  } catch (error: any) {
+    console.error("❌ Failed to start cronjob service:", error.message);
+  }
 });
