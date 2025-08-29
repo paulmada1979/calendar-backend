@@ -279,9 +279,9 @@ export class LangflowService {
 
       const query = `
         SELECT * FROM public.user_google_documents 
-        WHERE processed = false 
+        WHERE processed = false AND processing_status = 'pending'
         ORDER BY created_at ASC 
-        LIMIT 100
+        LIMIT 1
       `;
 
       logger.info(`[LANGFLOW-SERVICE] Executing query: ${query}`);
