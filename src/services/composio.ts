@@ -1099,7 +1099,7 @@ export class ComposioService {
       const result = await this.composio.tools.execute(
         `${toolkit.toUpperCase()}_${action.toUpperCase()}`,
         {
-          user_id: "default", // Use default user for now
+          userId: "default", // Use default user for now
           arguments: params,
         }
       );
