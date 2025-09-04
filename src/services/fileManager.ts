@@ -297,6 +297,49 @@ export class FileManagerService {
   }
 
   /**
+   * Save file buffer to local storage
+   */
+  async saveFileToLocal(
+    fileBuffer: Buffer,
+    fileName: string,
+    userId: string,
+    fileId: string
+  ): Promise<LocalFileInfo> {
+    try {
+      // Create user-specific subdirectory
+      const userDir = path.join(this.tempDir, userId);
+      if (!fs.existsSync(userDir)) {
+        fs.mkdirSync(userDir, { recursive: true });
+      }
+
+      // Create safe filename (remove special characters)
+      const safeFileName = this.createSafeFileName(fileName);
+      const localPath = path.join(userDir, `${fileId}_${safeFileName}`);
+
+      logger.info(`[FILE-MANAGER] Saving file: ${fileName} to ${localPath}`);
+
+      // Write buffer to file
+      fs.writeFileSync(localPath, fileBuffer);
+
+      const fileSize = fileBuffer.length;
+      const downloadedAt = new Date();
+
+      logger.info(
+        `[FILE-MANAGER] File saved successfully: ${fileName} (${fileSize} bytes)`
+      );
+
+      return {
+        localPath,
+        fileSize,
+        downloadedAt,
+      };
+    } catch (error: any) {
+      logger.error(`[FILE-MANAGER] Error saving file ${fileName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Create safe filename by removing special characters
    */
   private createSafeFileName(fileName: string): string {

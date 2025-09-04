@@ -1,5 +1,6 @@
 import { pgPool } from "../lib/pg";
 import { Composio } from "@composio/core";
+import { logger } from "../utils/logger";
 
 // Types for Composio integration
 export interface ComposioAuthConfig {
@@ -1076,6 +1077,51 @@ export class ComposioService {
    */
   isReady(): boolean {
     return this.isInitialized && this.composio !== null;
+  }
+
+  /**
+   * Execute a Composio action
+   */
+  async executeAction(
+    toolkit: string,
+    action: string,
+    params: Record<string, any>
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      if (!this.composio || !this.isInitialized) {
+        throw new Error("Composio SDK not initialized");
+      }
+
+      logger.info(`[COMPOSIO-SERVICE] Executing action: ${toolkit}.${action}`);
+
+      // Use Composio Core SDK to execute actions
+      // The correct method is tools.execute based on the documentation
+      const result = await this.composio.tools.execute(
+        `${toolkit.toUpperCase()}_${action.toUpperCase()}`,
+        {
+          user_id: "default", // Use default user for now
+          arguments: params,
+        }
+      );
+
+      logger.info(
+        `[COMPOSIO-SERVICE] Action executed successfully: ${toolkit}.${action}`
+      );
+
+      return {
+        success: true,
+        data: result.data,
+      };
+    } catch (error: any) {
+      logger.error(
+        `[COMPOSIO-SERVICE] Error executing action ${toolkit}.${action}:`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   }
 
   /**

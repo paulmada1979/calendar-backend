@@ -1,6 +1,6 @@
-# Langflow Integration with Google Drive Documents
+# LangExtract Integration with Google Drive Documents
 
-This document describes the integration of Langflow with Google Drive documents for automated document processing.
+This document describes the integration of LangExtract with Google Drive documents for automated document processing.
 
 ## Overview
 
@@ -10,7 +10,7 @@ The system automatically processes Google Drive documents (PDF, DOCX, TXT, MD, D
 2. **Creating database entries** with local file paths for efficient access
 3. **Running a cronjob** every 5 minutes to check for unprocessed documents
 4. **Processing documents locally** by reading from local storage
-5. **Uploading to Langflow** and executing flows
+5. **Uploading to LangExtract API** for document processing
 6. **Deleting local files** after successful processing
 7. **Updating document status** in the database
 
@@ -18,13 +18,13 @@ The system automatically processes Google Drive documents (PDF, DOCX, TXT, MD, D
 
 ### Services
 
-#### 1. LangflowService (`src/services/langflow.ts`)
+#### 1. LangExtractService (`src/services/langExtract.ts`)
 
-- Handles file uploads to Langflow using direct API calls
-- Executes Langflow flows via REST API endpoints
+- Handles file uploads to LangExtract API using direct API calls
 - Manages document processing workflow
 - Integrates with GoogleDriveDocumentsService
 - Uses FormData and Blob for file uploads
+- Includes user authentication via user_id parameter
 
 #### 2. CronjobService (`src/services/cronjob.ts`)
 
@@ -37,14 +37,22 @@ The system automatically processes Google Drive documents (PDF, DOCX, TXT, MD, D
 
 - Manages document storage and status tracking
 - Tracks processing status (pending, processing, completed, failed)
-- Stores Langflow processing results
+- Stores LangExtract processing results
 
-#### 4. FileManagerService (`src/services/fileManager.ts`)
+#### 4. ComposioGoogleDriveService (`src/services/composioGoogleDrive.ts`)
 
-- Downloads Google Drive files to local temporary storage
+- Uses Composio's token management for Google Drive authentication
+- Makes direct Google Drive API calls with proper error handling
+- Handles large file collections with better error handling
+- Downloads files with rate limiting and retry mechanisms
+- Provides robust file download with proper error recovery
+
+#### 5. FileManagerService (`src/services/fileManager.ts`)
+
 - Manages local file paths and cleanup
-- Handles concurrent downloads with rate limiting
+- Handles file storage and retrieval
 - Provides disk usage monitoring and cleanup
+- Works with Composio service for file operations
 
 ### Database Schema
 
@@ -52,7 +60,7 @@ The `user_google_documents` table includes:
 
 - `processed`: Boolean flag for processing status
 - `processing_status`: Enum (pending, processing, completed, failed)
-- `result`: JSONB field storing Langflow processing results
+- `result`: JSONB field storing LangExtract processing results
 - `processing_error`: Error message if processing fails
 - `local_file_path`: Local file path where document is stored temporarily
 - `downloaded_at`: Timestamp when file was downloaded to local storage
@@ -62,30 +70,26 @@ The `user_google_documents` table includes:
 Add these to your `.env` file:
 
 ```bash
-# Langflow Integration
-LANGFLOW_API_URL=https://editor.ai-did-it.com
-LANGFLOW_API_KEY=sk-ErkhYlPLOx9Kut2bodEsd1FjHZ2z_UydVZLW9M_Ofg8
-LANGFLOW_FLOW_ID=5942de6b-31fd-4f5b-aef5-45dce5e4d253
+# LangExtract Integration
+LANGEXTRACT_BASE_URL=your_langextract_api_url
 
 # Cronjob Configuration
 CRONJOB_PATTERN=*/5 * * * *
 ```
 
-## Langflow API Integration
+## LangExtract API Integration
 
-The system uses direct API calls to Langflow instead of the TypeScript client library:
+The system uses direct API calls to LangExtract API:
 
-### File Upload Endpoint
+### Document Upload Endpoint
 
-- **URL**: `POST /api/v2/files/`
-- **Headers**: `x-api-key: {your_api_key}`
-- **Body**: FormData with file blob
-
-### Flow Execution Endpoint
-
-- **URL**: `POST /api/v1/run/{flow_id}`
-- **Headers**: `Content-Type: application/json`, `x-api-key: {your_api_key}`
-- **Body**: JSON payload with file path and input parameters
+- **URL**: `POST /api/document/documents/upload/`
+- **Body**: FormData with file blob, userId, and processing options
+- **Parameters**:
+  - `file`: The document file (PDF, DOCX, TXT, MD, DOC)
+  - `userId`: The authenticated user's ID
+  - `enable_docling`: Enable Docling for PDF processing (true/false)
+  - `processing_options`: JSON string with processing configuration
 
 ## API Endpoints
 
@@ -160,12 +164,15 @@ Content-Type: application/json
 
 When a user connects Google Drive:
 
-- **All supported documents are downloaded** to local temporary storage (`temp/google-drive-files/{userId}/`)
+- **All supported documents are downloaded** using Composio's Google Drive integration
+- **Files are downloaded** to local temporary storage (`temp/google-drive-files/{userId}/`)
 - **Database entries are created** with local file paths for efficient access
 - **Files are organized** by user ID in separate directories
 - **All documents start** with `processed: false` and `processing_status: 'pending'`
 - **Local file paths** are stored in `local_file_path` field
 - **Download timestamps** are recorded in `downloaded_at` field
+- **Composio handles** token management and authentication
+- **Direct Google Drive API calls** with proper error handling and rate limiting
 
 ### 2. Automated Processing
 
@@ -173,8 +180,7 @@ Every 5 minutes, the cronjob:
 
 - **Queries for unprocessed documents** from the database
 - **Reads files from local storage** (no need to download from Google Drive again)
-- **Uploads files to Langflow** for processing
-- **Executes the specified flow** with the uploaded files
+- **Uploads files to LangExtract API** for processing
 - **Updates document status** based on processing results
 - **Deletes local files** after successful processing to free up disk space
 
@@ -226,12 +232,17 @@ CRONJOB_PATTERN=0 2 * * *
 
 ### File Management Features
 
+- **Composio Integration**: Uses Composio's token management for Google Drive authentication
+- **Direct API Calls**: Makes direct Google Drive API calls for better reliability
+- **Token Management**: Composio handles OAuth token refresh and management automatically
+- **Rate Limiting**: Built-in rate limiting and retry mechanisms
 - **Concurrent Downloads**: Downloads up to 3 files simultaneously for better performance
 - **Safe Filenames**: Automatically creates safe filenames by removing special characters
 - **User Isolation**: Each user's files are stored in separate directories
 - **Automatic Cleanup**: Old files are automatically cleaned up after 7 days
 - **Disk Usage Monitoring**: Tracks total disk usage and file counts
 - **Error Handling**: Gracefully handles download failures and continues with other files
+- **Large Collection Support**: Better handling of large Google Drive collections
 
 ## Error Handling
 
@@ -245,7 +256,7 @@ CRONJOB_PATTERN=0 2 * * *
 
 - Cronjob service automatically restarts on next scheduled run
 - Database connection issues are logged and handled gracefully
-- Langflow API failures are captured and logged
+- LangExtract API failures are captured and logged
 
 ## Monitoring
 
@@ -253,7 +264,7 @@ CRONJOB_PATTERN=0 2 * * *
 
 All operations are logged with structured logging:
 
-- `[LANGFLOW-SERVICE]` - Document processing operations
+- `[LANGEXTRACT-SERVICE]` - Document processing operations (LangExtract API calls)
 - `[CRONJOB-SERVICE]` - Scheduled job execution
 - `[GOOGLE-DRIVE-DOCUMENTS-SERVICE]` - Database operations
 
@@ -272,7 +283,7 @@ The system tracks:
 
 To test the integration:
 
-1. Set up environment variables
+1. Set up environment variables (especially `LANGEXTRACT_BASE_URL`)
 2. Start the server: `npm run dev`
 3. Connect a Google Drive account
 4. Monitor logs for document processing
@@ -282,31 +293,40 @@ To test the integration:
 
 To support additional file types:
 
-1. Update `getMimeType()` in `LangflowService`
+1. Update MIME type handling in `LangExtractService`
 2. Add MIME type mapping
 3. Update file filtering in sync logic
 
-### Customizing Langflow Flows
+### Customizing LangExtract Processing
 
-Modify the flow execution in `runLangflowFlow()`:
+Modify the upload parameters in `uploadFileToLangExtract()`:
 
 ```typescript
-private async runLangflowFlow(fileId: string) {
-  // Customize flow parameters
-  const flowParams = {
-    flowId: this.flowId,
-    inputs: {
-      file: fileId,
-      // Add custom parameters
-      processingOptions: {
-        extractText: true,
-        analyzeStructure: true
-      }
-    }
-  };
+private async uploadFileToLangExtract(
+  fileBuffer: Buffer,
+  fileName: string,
+  userId: string
+) {
+  // Prepare the form data with the file to upload
+  const data = new FormData();
+  const uint8Array = new Uint8Array(fileBuffer);
+  data.append("file", new Blob([uint8Array]), fileName);
+  data.append("userId", userId);
+  data.append("enable_docling", "true");
+  data.append("processing_options", JSON.stringify({
+    extractText: true,
+    analyzeStructure: true,
+    enableDocling: true,
+    schemaValidation: false,
+    autoDetectSchema: true,
+    skipSchemaValidation: true
+  }));
 
-  // Execute with custom parameters
-  return await this.client.runFlow(flowParams);
+  // Upload to LangExtract API
+  return await fetch(`${this.baseUrl}/api/document/documents/upload/`, {
+    method: "POST",
+    body: data,
+  });
 }
 ```
 
@@ -320,11 +340,11 @@ private async runLangflowFlow(fileId: string) {
 - Verify environment variables are set
 - Check logs for error messages
 
-#### 2. Langflow API Errors
+#### 2. LangExtract API Errors
 
-- Verify `LANGFLOW_API_URL` and `LANGFLOW_API_KEY`
-- Check Langflow server is running
-- Verify flow ID exists and is accessible
+- Verify `LANGEXTRACT_BASE_URL` is set correctly
+- Check LangExtract server is running and accessible
+- Verify the API endpoint `/api/document/documents/upload/` is available
 
 #### 3. Google Drive Access Issues
 
@@ -346,11 +366,11 @@ NODE_ENV=development
 - All endpoints require authentication
 - Access tokens are stored securely in database
 - File downloads use signed URLs where possible
-- Processing results are user-scoped
+- Processing results are user-scoped via userId parameter
 
 ## Performance
 
-- Documents are processed sequentially to avoid overwhelming APIs
+- Documents are processed sequentially to avoid overwhelming the LangExtract API
 - 1-second delay between document processing
 - Database transactions ensure data consistency
 - Connection pooling for database operations

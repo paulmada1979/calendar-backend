@@ -1,5 +1,5 @@
 import * as cron from "node-cron";
-import { langflowService } from "./langflow";
+import { langExtractService } from "./langExtract";
 import { logger } from "../utils/logger";
 
 export class CronjobService {
@@ -77,7 +77,7 @@ export class CronjobService {
         "[CRONJOB-SERVICE] Starting scheduled processing of unprocessed documents..."
       );
 
-      const result = await langflowService.processAllUnprocessedDocuments();
+      const result = await langExtractService.processAllUnprocessedDocuments();
 
       logger.info(
         `[CRONJOB-SERVICE] Processing completed. Total: ${result.total}, Processed: ${result.processed}, Failed: ${result.failed}`

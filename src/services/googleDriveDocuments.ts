@@ -1,5 +1,5 @@
 import { pgPool } from "../lib/pg";
-import { googleDriveService } from "./googleDrive";
+import { composioGoogleDriveService } from "./composioGoogleDrive";
 
 export interface GoogleDriveDocument {
   id: number;
@@ -426,7 +426,7 @@ export class GoogleDriveDocumentsService {
   }
 
   /**
-   * Sync all documents from Google Drive for a user
+   * Sync all documents from Google Drive for a user using Composio
    */
   async syncUserDocuments(userId: string): Promise<{
     total: number;
@@ -439,96 +439,8 @@ export class GoogleDriveDocumentsService {
         `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Starting sync for user: ${userId}`
       );
 
-      // Get all files from Google Drive
-      const allFiles = await googleDriveService.getAllFiles(
-        userId,
-        undefined,
-        1000
-      );
-
-      // Filter for document types
-      const documentTypes = [
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-        "text/plain", // .txt
-        "text/markdown", // .md
-        "text/x-markdown", // .md alternative
-        "application/msword", // .doc
-        "application/vnd.ms-word", // .doc alternative
-      ];
-
-      const documents = allFiles.files.filter((file) =>
-        documentTypes.includes(file.mimeType)
-      );
-
-      console.log(
-        `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Found ${documents.length} documents out of ${allFiles.files.length} total files`
-      );
-
-      // Download all files to local temp folder
-      const { fileManagerService } = await import("./fileManager");
-      const { connectedAccountsService } = await import("./connectedAccounts");
-
-      // Get access token for Google Drive
-      const connectedAccount =
-        await connectedAccountsService.getConnectedAccountByProvider(
-          userId,
-          "googledrive"
-        );
-
-      if (!connectedAccount?.meta?.access_token) {
-        throw new Error("No Google Drive access token found");
-      }
-
-      // Download files to local storage
-      const downloadedFiles = await fileManagerService.downloadAllUserFiles(
-        userId,
-        connectedAccount.meta.access_token,
-        documents.map((file) => ({
-          id: file.id,
-          name: file.name,
-          mimeType: file.mimeType,
-        }))
-      );
-
-      console.log(
-        `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Downloaded ${downloadedFiles.length} files to local storage`
-      );
-
-      // Convert to DocumentToSave format with local file paths
-      const documentsToSave: DocumentToSave[] = documents.map((file) => {
-        const downloadedFile = downloadedFiles.find(
-          (df) => df.fileId === file.id
-        );
-        return {
-          user_id: userId,
-          google_drive_file_id: file.id,
-          file_name: file.name,
-          file_path: this.buildFilePath(file),
-          mime_type: file.mimeType,
-          file_size: file.size ? parseInt(file.size) : undefined,
-          google_drive_web_view_link: file.webViewLink,
-          last_modified_at: file.modifiedTime
-            ? new Date(file.modifiedTime)
-            : undefined,
-          local_file_path: downloadedFile?.localInfo.localPath,
-          downloaded_at: downloadedFile?.localInfo.downloadedAt,
-        };
-      });
-
-      // Save all documents
-      const savedDocuments = await this.saveDocuments(documentsToSave);
-
-      console.log(
-        `[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Successfully synced ${savedDocuments.length} documents`
-      );
-
-      return {
-        total: documents.length,
-        new: savedDocuments.length,
-        updated: 0, // We're using UPSERT, so all are either new or updated
-        errors: [],
-      };
+      // Use Composio Google Drive service for better token management and error handling
+      return await composioGoogleDriveService.syncUserDocuments(userId);
     } catch (error: any) {
       console.error(
         "[GOOGLE-DRIVE-DOCUMENTS-SERVICE] Error syncing user documents:",

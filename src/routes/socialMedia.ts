@@ -5,6 +5,7 @@ import { connectedAccountsService } from "../services/connectedAccounts";
 import { googleDriveService } from "../services/googleDrive";
 import { googleDriveDocumentsService } from "../services/googleDriveDocuments";
 import { cronjobService } from "../services/cronjob";
+import { langExtractService } from "../services/langExtract";
 
 export const socialMediaRouter = express.Router();
 
@@ -1284,6 +1285,39 @@ socialMediaRouter.post(
         `[CRONJOB-ROUTES] Error triggering document processing: ${error.message}`
       );
       res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Test LangExtract API connectivity
+socialMediaRouter.get(
+  "/lang-extract/test",
+  isAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const connectivityTest = await langExtractService.testConnectivity();
+
+      if (connectivityTest.success) {
+        res.json({
+          success: true,
+          message: "LangExtract API connectivity test successful",
+          baseUrl: process.env.LANGEXTRACT_BASE_URL,
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: connectivityTest.error,
+          baseUrl: process.env.LANGEXTRACT_BASE_URL,
+        });
+      }
+    } catch (error: any) {
+      console.error(
+        `[LANGEXTRACT-ROUTES] Error testing LangExtract connectivity: ${error.message}`
+      );
+      res.status(500).json({
+        error: error.message,
+        baseUrl: process.env.LANGEXTRACT_BASE_URL,
+      });
     }
   }
 );
